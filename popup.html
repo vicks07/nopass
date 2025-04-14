@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Site Time Limiter</title>
+    <style>
+        body {
+            width: 300px;
+            padding: 15px;
+            font-family: Arial, sans-serif;
+        }
+
+        .site-input {
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 5px;
+        }
+
+        .time-input {
+            width: 60px;
+            margin-right: 5px;
+        }
+
+        .site-list {
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .site-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .site-info {
+            flex: 1;
+            margin-right: 10px;
+        }
+
+        .timer {
+            font-weight: bold;
+            margin: 0 10px;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        button {
+            padding: 5px 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        .delete-btn {
+            background-color: #f44336;
+        }
+
+        .delete-btn:hover {
+            background-color: #da190b;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .refresh-btn {
+            background-color: #3498db;
+        }
+
+        .refresh-btn:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h2>Site Time Limiter</h2>
+        <button id="refreshBtn" class="refresh-btn">Refresh</button>
+    </div>
+    <div>
+        <input type="text" id="siteInput" class="site-input" placeholder="Enter website (e.g., facebook.com)">
+        <input type="number" id="timeInput" class="time-input" placeholder="Minutes" min="1">
+        <button id="addSite">Add Site</button>
+    </div>
+    <div id="siteList" class="site-list"></div>
+    <script src="popup.js"></script>
+</body>
+
+</html>

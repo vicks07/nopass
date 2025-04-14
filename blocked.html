@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Site Blocked</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+        }
+
+        h1 {
+            color: #e74c3c;
+            margin-bottom: 20px;
+        }
+
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .time-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+
+        .reset-time {
+            font-weight: bold;
+            color: #3498db;
+        }
+
+        .suggestion {
+            margin-top: 30px;
+            font-style: italic;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Time Limit Reached</h1>
+        <p>You've reached your daily time limit for <span id="siteName"></span>.</p>
+        <div class="time-info">
+            <p>Your time limit will reset at <span id="resetTime" class="reset-time">midnight</span>.</p>
+        </div>
+        <p>Take a break and come back tomorrow!</p>
+        <p class="suggestion">Consider using this time for something productive or relaxing.</p>
+    </div>
+    <script>
+        // Get the blocked site from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const site = urlParams.get('site');
+        document.getElementById('siteName').textContent = site || 'this site';
+
+        // Calculate time until midnight
+        const now = new Date();
+        const midnight = new Date();
+        midnight.setHours(24, 0, 0, 0);
+
+        const hoursUntilMidnight = Math.floor((midnight - now) / (1000 * 60 * 60));
+        const minutesUntilMidnight = Math.floor(((midnight - now) % (1000 * 60 * 60)) / (1000 * 60));
+
+        let resetTimeText = '';
+        if (hoursUntilMidnight > 0) {
+            resetTimeText = `${hoursUntilMidnight} hour${hoursUntilMidnight > 1 ? 's' : ''} and ${minutesUntilMidnight} minute${minutesUntilMidnight !== 1 ? 's' : ''}`;
+        } else {
+            resetTimeText = `${minutesUntilMidnight} minute${minutesUntilMidnight !== 1 ? 's' : ''}`;
+        }
+
+        document.getElementById('resetTime').textContent = resetTimeText;
+    </script>
+</body>
+
+</html>
