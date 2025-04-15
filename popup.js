@@ -25,7 +25,22 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   
   refreshButton.addEventListener('click', function() {
-    loadSites();
+    // Force reload all sites and their times
+    chrome.storage.sync.get(['sites'], function(result) {
+      const sites = result.sites || {};
+      // Update each site's time from active tabs
+      Object.keys(sites).forEach(site => {
+        chrome.runtime.sendMessage({ action: 'getTimeSpent', site: site }, function(response) {
+          if (response && response.timeSpent !== undefined) {
+            sites[site].timeSpent = response.timeSpent;
+          }
+        });
+      });
+      // Save updated times and reload display
+      chrome.storage.sync.set({ sites: sites }, function() {
+        loadSites();
+      });
+    });
   });
 
   function addSite(site, timeLimit) {

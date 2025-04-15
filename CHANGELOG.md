@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic blocking when time limit is reached
 - Easy-to-use interface
 - Support for both online and local testing
+- Time warning notification when 10% of time limit remains
 
 ### Changed
 - Renamed from "Site Time Limiter" to "NoPass"

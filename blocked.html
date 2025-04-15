@@ -2,7 +2,7 @@
 <html>
 
 <head>
-    <title>Site Blocked</title>
+    <title>Site Blocked by NoPass</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -53,13 +53,18 @@
             font-style: italic;
             color: #7f8c8d;
         }
+
+        .site-name {
+            font-weight: bold;
+            color: #e74c3c;
+        }
     </style>
 </head>
 
 <body>
     <div class="container">
         <h1>Time Limit Reached</h1>
-        <p>You've reached your daily time limit for <span id="siteName"></span>.</p>
+        <p>You've reached your daily time limit for <span id="siteName" class="site-name"></span>.</p>
         <div class="time-info">
             <p>Your time limit will reset at <span id="resetTime" class="reset-time">midnight</span>.</p>
         </div>
@@ -88,6 +93,9 @@
         }
 
         document.getElementById('resetTime').textContent = resetTimeText;
+
+        // Log for debugging
+        console.log('Blocked page loaded for site:', site);
     </script>
 </body>
 

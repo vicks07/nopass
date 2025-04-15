@@ -1,8 +1,9 @@
 // Track active tabs and their start times
 let activeTabs = {};
+let notifiedTabs = new Set(); // Track tabs that have been notified
 
 // Check and reset daily limits
-chrome.alarms.create('dailyReset', { periodInMinutes: 1440 }); // 24 hours
+chrome.alarms.create('dailyReset', { periodInMinutes: 1440 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'dailyReset') {
@@ -38,6 +39,26 @@ function findMatchingSite(domain, trackedSites) {
   return null;
 }
 
+// Function to block a site
+function blockSite(tabId, site) {
+  console.log(`Blocking ${site} for tab ${tabId}`);
+  try {
+    chrome.tabs.update(parseInt(tabId), {
+      url: chrome.runtime.getURL('blocked.html') + '?site=' + encodeURIComponent(site)
+    }, function() {
+      if (chrome.runtime.lastError) {
+        console.error('Error blocking site:', chrome.runtime.lastError);
+      } else {
+        console.log(`Successfully blocked ${site} for tab ${tabId}`);
+      }
+    });
+    delete activeTabs[tabId];
+    notifiedTabs.delete(tabId);
+  } catch (e) {
+    console.error('Exception when blocking site:', e);
+  }
+}
+
 // Listen for tab updates
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {
@@ -59,10 +80,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         
         if (sites[matchedSite].timeSpent >= sites[matchedSite].timeLimit) {
           // Block the site if time limit is reached
-          console.log(`Blocking ${matchedSite} - time limit reached`);
-          chrome.tabs.update(tabId, {
-            url: chrome.runtime.getURL('blocked.html') + '?site=' + encodeURIComponent(matchedSite)
-          });
+          blockSite(tabId, matchedSite);
         } else {
           // Start tracking time for this tab
           activeTabs[tabId] = {
@@ -96,27 +114,37 @@ setInterval(() => {
         chrome.storage.sync.set({ sites: sites }, function() {
           // Check if time limit is reached
           if (timeSpent >= sites[data.domain].timeLimit) {
-            console.log(`Blocking ${data.domain} - time limit reached (${timeSpent} >= ${sites[data.domain].timeLimit})`);
+            console.log(`Time limit reached for ${data.domain}: ${timeSpent} >= ${sites[data.domain].timeLimit}`);
+            blockSite(parseInt(tabId), data.domain);
+          } else {
+            // Check for 10% time remaining
+            const timeLimit = sites[data.domain].timeLimit;
+            const timeLeft = timeLimit - timeSpent;
+            const tenPercentTime = timeLimit * 0.1;
             
-            // Block the site
-            chrome.tabs.update(parseInt(tabId), {
-              url: chrome.runtime.getURL('blocked.html') + '?site=' + encodeURIComponent(data.domain)
-            });
-            
-            // Stop tracking this tab
-            delete activeTabs[tabId];
+            if (timeLeft <= tenPercentTime && !notifiedTabs.has(tabId)) {
+              console.log(`10% time remaining for ${data.domain}`);
+              // Show notification
+              chrome.tabs.sendMessage(parseInt(tabId), {
+                action: 'timeWarning',
+                timeLeft: timeLeft,
+                site: data.domain
+              });
+              notifiedTabs.add(tabId);
+            }
           }
         });
       }
     });
   });
-}, 5000); // Check every 5 seconds for more responsive updates
+}, 1000); // Check every second
 
 // Handle tab removal
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (activeTabs[tabId]) {
     console.log(`Tab ${tabId} removed, stopping tracking for ${activeTabs[tabId].domain}`);
     delete activeTabs[tabId];
+    notifiedTabs.delete(tabId);
   }
 });
 
