@@ -153,16 +153,19 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function deleteSite(site) {
-    chrome.storage.sync.get(['sites'], function(result) {
-      const sites = result.sites || {};
-      delete sites[site];
-      
-      chrome.storage.sync.set({ sites: sites }, function() {
-        loadSites();
-        // Notify background script about the deleted site
-        chrome.runtime.sendMessage({
-          action: 'siteDeleted',
-          site: site
+    // First notify background script to clean up any active tracking
+    chrome.runtime.sendMessage({
+      action: 'siteDeleted',
+      site: site
+    }, function() {
+      // Then remove from storage and update UI
+      chrome.storage.sync.get(['sites'], function(result) {
+        const sites = result.sites || {};
+        delete sites[site];
+        
+        chrome.storage.sync.set({ sites: sites }, function() {
+          console.log(`Site ${site} deleted from storage`);
+          loadSites(); // Refresh the UI
         });
       });
     });

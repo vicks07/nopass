@@ -1,6 +1,7 @@
 // Track active tabs and their start times
 let activeTabs = {};
 let notifiedTabs = new Set(); // Track tabs that have been notified
+let currentActiveTabId = null; // Track the currently active tab
 
 // Check and reset daily limits
 chrome.alarms.create('dailyReset', { periodInMinutes: 1440 });
@@ -96,7 +97,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
             activeTabs[tabId] = {
               domain: matchedSite,
               startTime: Date.now(),
-              lastUpdate: Date.now()
+              lastUpdate: Date.now(),
+              isActive: false // Initialize as inactive
             };
             console.log(`Started tracking time for ${matchedSite} at ${new Date().toISOString()}`);
           }
@@ -106,12 +108,66 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
+// Track tab activation changes
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  const tabId = activeInfo.tabId;
+  currentActiveTabId = tabId;
+  
+  // Mark the newly activated tab as active
+  if (activeTabs[tabId]) {
+    console.log(`Tab ${tabId} activated, marking as active`);
+    activeTabs[tabId].isActive = true;
+    activeTabs[tabId].lastUpdate = Date.now(); // Reset last update time
+  }
+  
+  // Mark all other tabs as inactive
+  Object.keys(activeTabs).forEach(id => {
+    if (id != tabId && activeTabs[id].isActive) {
+      console.log(`Tab ${id} deactivated, marking as inactive`);
+      activeTabs[id].isActive = false;
+      
+      // Update the time spent for the deactivated tab
+      updateTimeForTab(id);
+    }
+  });
+});
+
+// Function to update time for a specific tab
+function updateTimeForTab(tabId) {
+  if (!activeTabs[tabId]) return;
+  
+  const data = activeTabs[tabId];
+  const now = Date.now();
+  const timeSpentSinceLastUpdate = Math.floor((now - data.lastUpdate) / 60000);
+  
+  if (timeSpentSinceLastUpdate > 0 && data.isActive) {
+    chrome.storage.sync.get(['sites'], function(result) {
+      const sites = result.sites || {};
+      
+      if (sites[data.domain]) {
+        const newTimeSpent = sites[data.domain].timeSpent + timeSpentSinceLastUpdate;
+        console.log(`Updating time for ${data.domain}: ${newTimeSpent} minutes total (added ${timeSpentSinceLastUpdate} minutes)`);
+        
+        sites[data.domain].timeSpent = newTimeSpent;
+        chrome.storage.sync.set({ sites: sites });
+      }
+    });
+  }
+  
+  // Update the last update time
+  activeTabs[tabId].lastUpdate = now;
+}
+
 // Track time spent on sites
 setInterval(() => {
   const now = Date.now();
   const today = new Date().toDateString();
   
-  Object.entries(activeTabs).forEach(([tabId, data]) => {
+  // Only process the currently active tab
+  if (currentActiveTabId && activeTabs[currentActiveTabId] && activeTabs[currentActiveTabId].isActive) {
+    const tabId = currentActiveTabId;
+    const data = activeTabs[tabId];
+    
     chrome.storage.sync.get(['sites'], function(result) {
       const sites = result.sites || {};
       
@@ -163,15 +219,23 @@ setInterval(() => {
         }
       }
     });
-  });
+  }
 }, 1000); // Check every second
 
 // Handle tab removal
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (activeTabs[tabId]) {
+    // Update time for the removed tab before removing it
+    updateTimeForTab(tabId);
+    
     console.log(`Tab ${tabId} removed, stopping tracking for ${activeTabs[tabId].domain}`);
     delete activeTabs[tabId];
     notifiedTabs.delete(tabId);
+    
+    // If the removed tab was the active tab, clear the current active tab
+    if (tabId === currentActiveTabId) {
+      currentActiveTabId = null;
+    }
   }
 });
 
@@ -217,6 +281,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         };
         console.log(`Added site: ${request.site} with limit: ${request.timeLimit} minutes`);
       } else if (request.action === 'siteDeleted') {
+        // Clean up any active tabs tracking this site
+        Object.entries(activeTabs).forEach(([tabId, data]) => {
+          if (data.domain === request.site) {
+            console.log(`Removing tracking for deleted site ${request.site} from tab ${tabId}`);
+            delete activeTabs[tabId];
+            notifiedTabs.delete(tabId);
+          }
+        });
+        
+        // Remove the site from storage
         delete sites[request.site];
         console.log(`Deleted site: ${request.site}`);
       }
@@ -241,7 +315,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // Calculate additional time from active tabs
         let additionalTime = 0;
         Object.values(activeTabs).forEach(tabData => {
-          if (tabData.domain === site) {
+          if (tabData.domain === site && tabData.isActive) {
             const timeSpent = Math.floor((Date.now() - tabData.lastUpdate) / 60000);
             additionalTime = Math.max(additionalTime, timeSpent);
           }
