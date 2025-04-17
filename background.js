@@ -76,18 +76,30 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       console.log(`Matched site: ${matchedSite}`);
       
       if (matchedSite) {
+        // Check if we need to reset the time for this site
+        const today = new Date().toDateString();
+        if (sites[matchedSite].lastReset !== today) {
+          console.log(`Resetting time for ${matchedSite} as it's a new day`);
+          sites[matchedSite].timeSpent = 0;
+          sites[matchedSite].lastReset = today;
+          chrome.storage.sync.set({ sites: sites });
+        }
+        
         console.log(`Site ${matchedSite} is being tracked. Time spent: ${sites[matchedSite].timeSpent}, Limit: ${sites[matchedSite].timeLimit}`);
         
         if (sites[matchedSite].timeSpent >= sites[matchedSite].timeLimit) {
           // Block the site if time limit is reached
           blockSite(tabId, matchedSite);
         } else {
-          // Start tracking time for this tab
-          activeTabs[tabId] = {
-            domain: matchedSite,
-            startTime: Date.now()
-          };
-          console.log(`Started tracking time for ${matchedSite} at ${new Date().toISOString()}`);
+          // Only start tracking if not already tracking this tab
+          if (!activeTabs[tabId]) {
+            activeTabs[tabId] = {
+              domain: matchedSite,
+              startTime: Date.now(),
+              lastUpdate: Date.now()
+            };
+            console.log(`Started tracking time for ${matchedSite} at ${new Date().toISOString()}`);
+          }
         }
       }
     });
@@ -97,43 +109,58 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // Track time spent on sites
 setInterval(() => {
   const now = Date.now();
+  const today = new Date().toDateString();
   
   Object.entries(activeTabs).forEach(([tabId, data]) => {
     chrome.storage.sync.get(['sites'], function(result) {
       const sites = result.sites || {};
       
       if (sites[data.domain]) {
-        // Calculate time spent in minutes
-        const timeSpent = Math.floor((now - data.startTime) / 60000);
-        console.log(`Updating time for ${data.domain}: ${timeSpent} minutes spent`);
+        // Check if we need to reset for a new day
+        if (sites[data.domain].lastReset !== today) {
+          console.log(`Resetting time for ${data.domain} as it's a new day`);
+          sites[data.domain].timeSpent = 0;
+          sites[data.domain].lastReset = today;
+          data.lastUpdate = now; // Reset the last update time as well
+        }
         
-        // Update the stored time
-        sites[data.domain].timeSpent = timeSpent;
+        // Calculate time spent since last update in minutes
+        const timeSpentSinceLastUpdate = Math.floor((now - data.lastUpdate) / 60000);
         
-        // Save the updated time
-        chrome.storage.sync.set({ sites: sites }, function() {
-          // Check if time limit is reached
-          if (timeSpent >= sites[data.domain].timeLimit) {
-            console.log(`Time limit reached for ${data.domain}: ${timeSpent} >= ${sites[data.domain].timeLimit}`);
-            blockSite(parseInt(tabId), data.domain);
-          } else {
-            // Check for 10% time remaining
-            const timeLimit = sites[data.domain].timeLimit;
-            const timeLeft = timeLimit - timeSpent;
-            const tenPercentTime = timeLimit * 0.1;
-            
-            if (timeLeft <= tenPercentTime && !notifiedTabs.has(tabId)) {
-              console.log(`10% time remaining for ${data.domain}`);
-              // Show notification
-              chrome.tabs.sendMessage(parseInt(tabId), {
-                action: 'timeWarning',
-                timeLeft: timeLeft,
-                site: data.domain
-              });
-              notifiedTabs.add(tabId);
+        if (timeSpentSinceLastUpdate > 0) {
+          // Update the stored time by adding the new time spent
+          const newTimeSpent = sites[data.domain].timeSpent + timeSpentSinceLastUpdate;
+          console.log(`Updating time for ${data.domain}: ${newTimeSpent} minutes total (added ${timeSpentSinceLastUpdate} minutes)`);
+          
+          // Update the stored time
+          sites[data.domain].timeSpent = newTimeSpent;
+          data.lastUpdate = now;
+          
+          // Save the updated time
+          chrome.storage.sync.set({ sites: sites }, function() {
+            // Check if time limit is reached
+            if (newTimeSpent >= sites[data.domain].timeLimit) {
+              console.log(`Time limit reached for ${data.domain}: ${newTimeSpent} >= ${sites[data.domain].timeLimit}`);
+              blockSite(parseInt(tabId), data.domain);
+            } else {
+              // Check for 10% time remaining
+              const timeLimit = sites[data.domain].timeLimit;
+              const timeLeft = timeLimit - newTimeSpent;
+              const tenPercentTime = timeLimit * 0.1;
+              
+              if (timeLeft <= tenPercentTime && !notifiedTabs.has(tabId)) {
+                console.log(`10% time remaining for ${data.domain}`);
+                // Show notification
+                chrome.tabs.sendMessage(parseInt(tabId), {
+                  action: 'timeWarning',
+                  timeLeft: timeLeft,
+                  site: data.domain
+                });
+                notifiedTabs.add(tabId);
+              }
             }
-          }
-        });
+          });
+        }
       }
     });
   });
@@ -151,19 +178,26 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // Reset daily limits
 function resetDailyLimits() {
   console.log('Resetting daily limits');
+  const today = new Date().toDateString();
+  
   chrome.storage.sync.get(['sites'], function(result) {
     const sites = result.sites || {};
-    const today = new Date().toDateString();
+    let needsUpdate = false;
     
     Object.keys(sites).forEach(site => {
       if (sites[site].lastReset !== today) {
+        console.log(`Resetting time for ${site} (old reset: ${sites[site].lastReset}, new reset: ${today})`);
         sites[site].timeSpent = 0;
         sites[site].lastReset = today;
-        console.log(`Reset time for ${site}`);
+        needsUpdate = true;
       }
     });
     
-    chrome.storage.sync.set({ sites: sites });
+    if (needsUpdate) {
+      chrome.storage.sync.set({ sites: sites }, function() {
+        console.log('Daily limits reset complete');
+      });
+    }
   });
 }
 
@@ -193,13 +227,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     chrome.storage.sync.get(['sites'], function(result) {
       const sites = result.sites || {};
       const site = request.site;
+      const today = new Date().toDateString();
       
       if (sites[site]) {
+        // Check if we need to reset for a new day
+        if (sites[site].lastReset !== today) {
+          console.log(`Resetting time for ${site} as it's a new day`);
+          sites[site].timeSpent = 0;
+          sites[site].lastReset = today;
+          chrome.storage.sync.set({ sites: sites });
+        }
+        
         // Calculate additional time from active tabs
         let additionalTime = 0;
         Object.values(activeTabs).forEach(tabData => {
           if (tabData.domain === site) {
-            const timeSpent = Math.floor((Date.now() - tabData.startTime) / 60000);
+            const timeSpent = Math.floor((Date.now() - tabData.lastUpdate) / 60000);
             additionalTime = Math.max(additionalTime, timeSpent);
           }
         });
